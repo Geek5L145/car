@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Прогнозы ТО - Управление автопарком{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>Прогнозы технического обслуживания</h2>
+    </div>
+    <div id="predictions-list">
+        <div class="loading">Загрузка...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadPredictions() {
+        const headers = getAuthHeaders();
+        try {
+            // Получаем все транспортные средства
+            const vehiclesResponse = await fetch('/api/vehicles', { headers });
+            const vehicles = await vehiclesResponse.json();
+            
+            const container = document.getElementById('predictions-list');
+            const predictions = [];
+            
+            // Для каждого ТС получаем прогноз
+            for (const vehicle of vehicles.filter(v => v.status === 'active')) {
+                try {
+                    const predResponse = await fetch(`/api/vehicles/${vehicle.id}/prediction`, { headers });
+                    const predData = await predResponse.json();
+                    predictions.push({
+                        vehicle,
+                        ...predData
+                    });
+                } catch (error) {
+                    console.error(`Error loading prediction for vehicle ${vehicle.id}:`, error);
+                }
+            }
+            
+            if (predictions.length === 0) {
+                container.innerHTML = '<p style="color: #7F8C8D;">Нет данных для прогнозирования</p>';
+            } else {
+                // Сортируем по дате
+                predictions.sort((a, b) => new Date(a.prediction.predicted_date) - new Date(b.prediction.predicted_date));
+                
+                const wrapper = document.createElement('div');
+                wrapper.className = 'table-wrapper';
+                
+                const table = document.createElement('table');
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>ТС</th>
+                            <th>Гос. номер</th>
+                            <th>Текущий пробег</th>
+                            <th>Среднесуточный пробег</th>
+                            <th>Прогноз даты ТО</th>
+                            <th>Прогноз пробега</th>
+                            <th>Осталось дней</th>
+                            <th>Осталось км</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${predictions.map(item => {
+                            const status = item.status;
+                            const badgeClass = status === 'overdue' ? 'badge-danger' : 
+                                             status === 'urgent' ? 'badge-danger' : 
+                                             status === 'warning' ? 'badge-warning' : 'badge-success';
+                            const statusText = status === 'overdue' ? 'Просрочено' : 
+                                             status === 'urgent' ? 'Срочно' : 
+                                             status === 'warning' ? 'Скоро' : 'Норма';
+                            const date = new Date(item.prediction.predicted_date);
+                            return `
+                                <tr>
+                                    <td>${item.vehicle.brand} ${item.vehicle.model}</td>
+                                    <td>${item.vehicle.reg_number}</td>
+                                    <td>${new Intl.NumberFormat('ru-RU').format(item.vehicle.current_mileage)} км</td>
+                                    <td>${item.daily_mileage.toFixed(1)} км/день</td>
+                                    <td>${date.toLocaleDateString('ru-RU')}</td>
+                                    <td>${new Intl.NumberFormat('ru-RU').format(item.prediction.predicted_mileage)} км</td>
+                                    <td>${item.prediction.days_remaining}</td>
+                                    <td>${new Intl.NumberFormat('ru-RU').format(Math.round(item.prediction.km_remaining))} км</td>
+                                    <td><span class="badge ${badgeClass}">${statusText}</span></td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                `;
+                
+                // Мобильная версия
+                const mobileTable = document.createElement('div');
+                mobileTable.className = 'table-mobile';
+                mobileTable.innerHTML = predictions.map(item => {
+                    const status = item.status;
+                    const badgeClass = status === 'overdue' ? 'badge-danger' : 
+                                     status === 'urgent' ? 'badge-danger' : 
+                                     status === 'warning' ? 'badge-warning' : 'badge-success';
+                    const statusText = status === 'overdue' ? 'Просрочено' : 
+                                     status === 'urgent' ? 'Срочно' : 
+                                     status === 'warning' ? 'Скоро' : 'Норма';
+                    const date = new Date(item.prediction.predicted_date);
+                    return `
+                        <div class="table-card">
+                            <div class="table-card-row">
+                                <span class="table-card-label">ТС</span>
+                                <span class="table-card-value">${item.vehicle.brand} ${item.vehicle.model}</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Гос. номер</span>
+                                <span class="table-card-value">${item.vehicle.reg_number}</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Текущий пробег</span>
+                                <span class="table-card-value">${new Intl.NumberFormat('ru-RU').format(item.vehicle.current_mileage)} км</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Среднесуточный пробег</span>
+                                <span class="table-card-value">${item.daily_mileage.toFixed(1)} км/день</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Прогноз даты ТО</span>
+                                <span class="table-card-value">${date.toLocaleDateString('ru-RU')}</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Прогноз пробега</span>
+                                <span class="table-card-value">${new Intl.NumberFormat('ru-RU').format(item.prediction.predicted_mileage)} км</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Осталось дней</span>
+                                <span class="table-card-value">${item.prediction.days_remaining}</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Осталось км</span>
+                                <span class="table-card-value">${new Intl.NumberFormat('ru-RU').format(Math.round(item.prediction.km_remaining))} км</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Статус</span>
+                                <span class="table-card-value"><span class="badge ${badgeClass}">${statusText}</span></span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                wrapper.appendChild(table);
+                wrapper.appendChild(mobileTable);
+                container.innerHTML = '';
+                container.appendChild(wrapper);
+            }
+        } catch (error) {
+            console.error('Error loading predictions:', error);
+            showErrorModal('Ошибка загрузки прогнозов ТО');
+            document.getElementById('predictions-list').innerHTML = '<p style="color: #E74C3C;">Ошибка загрузки данных</p>';
+        }
+    }
+    
+    loadPredictions();
+</script>
+{% endblock %}
+

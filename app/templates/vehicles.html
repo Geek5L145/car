@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+
+{% block title %}Транспортные средства - Управление автопарком{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Реестр транспортных средств</h2>
+        <button class="btn btn-primary role-admin role-mechanic" onclick="openAddVehicleModal()" style="display: none;">+ Добавить ТС</button>
+    </div>
+    
+    <div id="vehicles-list">
+        <div class="loading">Загрузка...</div>
+    </div>
+</div>
+
+<!-- Modal для добавления/редактирования ТС -->
+<div id="vehicle-modal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeVehicleModal()">&times;</span>
+        <h2 id="modal-title">Добавить транспортное средство</h2>
+        <form id="vehicle-form">
+            <input type="hidden" id="vehicle-id">
+            <div class="form-group">
+                <label for="brand">Марка *</label>
+                <input type="text" id="brand" autocomplete="off" required>
+            </div>
+            <div class="form-group">
+                <label for="model">Модель *</label>
+                <input type="text" id="model" autocomplete="off" required>
+            </div>
+            <div class="form-group">
+                <label for="year">Год *</label>
+                <input type="number" id="year" min="1900" max="2100" autocomplete="off" required>
+            </div>
+            <div class="form-group">
+                <label for="vin">VIN *</label>
+                <input type="text" id="vin" maxlength="17" autocomplete="off" required>
+                <small style="color: #7F8C8D;">17 символов, без I, O, Q</small>
+            </div>
+            <div class="form-group">
+                <label for="reg-number">Гос. номер *</label>
+                <input type="text" id="reg-number" autocomplete="off" required>
+            </div>
+            <div class="form-group">
+                <label for="purchase-date">Дата покупки *</label>
+                <input type="date" id="purchase-date" autocomplete="off" required>
+            </div>
+            <div class="form-group">
+                <label for="vehicle-type">Тип ТС *</label>
+                <select id="vehicle-type" autocomplete="off" required>
+                    <option value="truck">Грузовик</option>
+                    <option value="car">Легковой</option>
+                    <option value="special">Спецтехника</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="initial-mileage">Начальный пробег (км)</label>
+                <input type="number" id="initial-mileage" min="0" value="0" autocomplete="off">
+            </div>
+            <div class="form-group" id="edit-fields" style="display: none;">
+                <label for="current-mileage">Текущий пробег (км)</label>
+                <input type="number" id="current-mileage" min="0" value="0" autocomplete="off">
+            </div>
+            <div class="form-group" id="edit-status-field" style="display: none;">
+                <label for="vehicle-status">Статус</label>
+                <select id="vehicle-status" autocomplete="off">
+                    <option value="active">Активен</option>
+                    <option value="repair">В ремонте</option>
+                    <option value="maintenance">На ТО</option>
+                    <option value="inactive">Неактивен</option>
+                </select>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-primary" style="flex: 1;">Сохранить</button>
+                <button type="button" class="btn btn-secondary" onclick="closeVehicleModal()" style="flex: 1;">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadVehicles() {
+        const headers = getAuthHeaders();
+        try {
+            const response = await fetch('/api/vehicles', { headers });
+            const vehicles = await response.json();
+            
+            const container = document.getElementById('vehicles-list');
+            if (vehicles.length === 0) {
+                container.innerHTML = '<p style="color: #7F8C8D;">Нет транспортных средств</p>';
+            } else {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'table-wrapper';
+                
+                const table = document.createElement('table');
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Марка/Модель</th>
+                            <th>Год</th>
+                            <th>Гос. номер</th>
+                            <th>VIN</th>
+                            <th>Тип</th>
+                            <th>Пробег (км)</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${vehicles.map(v => `
+                            <tr>
+                                <td>${v.brand} ${v.model}</td>
+                                <td>${v.year}</td>
+                                <td>${v.reg_number}</td>
+                                <td>${v.vin}</td>
+                                <td>${v.vehicle_type === 'truck' ? 'Грузовик' : v.vehicle_type === 'car' ? 'Легковой' : 'Спецтехника'}</td>
+                                <td>${new Intl.NumberFormat('ru-RU').format(v.current_mileage)}</td>
+                                <td>
+                                    <span class="badge ${v.status === 'active' ? 'badge-success' : v.status === 'repair' ? 'badge-danger' : 'badge-secondary'}">
+                                        ${v.status === 'active' ? 'Активен' : v.status === 'repair' ? 'Ремонт' : 'Неактивен'}
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="/vehicles/${v.id}" class="btn btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">Детали</a>
+                                    <button onclick="editVehicle(${v.id})" class="btn btn-warning role-admin role-mechanic" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">Изменить</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                `;
+                
+                // Мобильная версия
+                const mobileTable = document.createElement('div');
+                mobileTable.className = 'table-mobile';
+                mobileTable.innerHTML = vehicles.map(v => `
+                    <div class="table-card">
+                        <div class="table-card-row">
+                            <span class="table-card-label">Марка/Модель</span>
+                            <span class="table-card-value">${v.brand} ${v.model}</span>
+                        </div>
+                        <div class="table-card-row">
+                            <span class="table-card-label">Год</span>
+                            <span class="table-card-value">${v.year}</span>
+                        </div>
+                        <div class="table-card-row">
+                            <span class="table-card-label">Гос. номер</span>
+                            <span class="table-card-value">${v.reg_number}</span>
+                        </div>
+                        <div class="table-card-row">
+                            <span class="table-card-label">VIN</span>
+                            <span class="table-card-value" style="font-size: 0.8rem;">${v.vin}</span>
+                        </div>
+                        <div class="table-card-row">
+                            <span class="table-card-label">Тип</span>
+                            <span class="table-card-value">${v.vehicle_type === 'truck' ? 'Грузовик' : v.vehicle_type === 'car' ? 'Легковой' : 'Спецтехника'}</span>
+                        </div>
+                        <div class="table-card-row">
+                            <span class="table-card-label">Пробег</span>
+                            <span class="table-card-value">${new Intl.NumberFormat('ru-RU').format(v.current_mileage)} км</span>
+                        </div>
+                        <div class="table-card-row">
+                            <span class="table-card-label">Статус</span>
+                            <span class="table-card-value">
+                                <span class="badge ${v.status === 'active' ? 'badge-success' : v.status === 'repair' ? 'badge-danger' : 'badge-secondary'}">
+                                    ${v.status === 'active' ? 'Активен' : v.status === 'repair' ? 'Ремонт' : 'Неактивен'}
+                                </span>
+                            </span>
+                        </div>
+                        <div class="table-card-row" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 2px solid #ECF0F1;">
+                            <span class="table-card-value" style="width: 100%; display: flex; gap: 0.5rem;">
+                                <a href="/vehicles/${v.id}" class="btn btn-primary" style="flex: 1; text-align: center; padding: 0.5rem;">Детали</a>
+                                <button onclick="editVehicle(${v.id})" class="btn btn-warning role-admin role-mechanic" style="flex: 1; padding: 0.5rem;">Изменить</button>
+                            </span>
+                        </div>
+                    </div>
+                `).join('');
+                
+                wrapper.appendChild(table);
+                wrapper.appendChild(mobileTable);
+                container.innerHTML = '';
+                container.appendChild(wrapper);
+            }
+        } catch (error) {
+            console.error('Error loading vehicles:', error);
+            showErrorModal('Ошибка загрузки данных о транспортных средствах');
+            document.getElementById('vehicles-list').innerHTML = '<p style="color: #E74C3C;">Ошибка загрузки данных</p>';
+        }
+    }
+    
+    function openAddVehicleModal() {
+        // Проверка прав доступа
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для добавления транспортных средств');
+            return;
+        }
+        
+        document.getElementById('vehicle-form').reset();
+        document.getElementById('vehicle-id').value = '';
+        
+        // Скрываем дополнительные поля при добавлении
+        document.getElementById('edit-fields').style.display = 'none';
+        document.getElementById('edit-status-field').style.display = 'none';
+        
+        document.getElementById('modal-title').textContent = 'Добавить транспортное средство';
+        document.getElementById('vehicle-modal').style.display = 'block';
+    }
+    
+    function closeVehicleModal() {
+        document.getElementById('vehicle-modal').style.display = 'none';
+    }
+    
+    async function editVehicle(id) {
+        // Проверка прав доступа
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для редактирования транспортных средств');
+            return;
+        }
+        
+        const headers = getAuthHeaders();
+        try {
+            const response = await fetch(`/api/vehicles/${id}`, { headers });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                showErrorModal(error.error || 'Ошибка загрузки данных');
+                return;
+            }
+            
+            const vehicle = await response.json();
+            
+            document.getElementById('vehicle-id').value = vehicle.id;
+            document.getElementById('brand').value = vehicle.brand;
+            document.getElementById('model').value = vehicle.model;
+            document.getElementById('year').value = vehicle.year;
+            document.getElementById('vin').value = vehicle.vin;
+            document.getElementById('reg-number').value = vehicle.reg_number;
+            document.getElementById('purchase-date').value = vehicle.purchase_date;
+            document.getElementById('vehicle-type').value = vehicle.vehicle_type;
+            document.getElementById('initial-mileage').value = vehicle.initial_mileage || 0;
+            
+            // Показываем дополнительные поля для редактирования
+            document.getElementById('edit-fields').style.display = 'block';
+            document.getElementById('edit-status-field').style.display = 'block';
+            document.getElementById('current-mileage').value = vehicle.current_mileage || 0;
+            document.getElementById('vehicle-status').value = vehicle.status || 'active';
+            
+            document.getElementById('modal-title').textContent = 'Редактировать транспортное средство';
+            document.getElementById('vehicle-modal').style.display = 'block';
+        } catch (error) {
+            showErrorModal('Ошибка соединения с сервером');
+        }
+    }
+    
+    document.getElementById('vehicle-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        // Проверка прав доступа
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для создания или изменения транспортных средств');
+            return;
+        }
+        
+        const id = document.getElementById('vehicle-id').value;
+        const data = {
+            brand: document.getElementById('brand').value,
+            model: document.getElementById('model').value,
+            year: parseInt(document.getElementById('year').value),
+            vin: document.getElementById('vin').value,
+            reg_number: document.getElementById('reg-number').value,
+            purchase_date: document.getElementById('purchase-date').value,
+            vehicle_type: document.getElementById('vehicle-type').value,
+            initial_mileage: parseInt(document.getElementById('initial-mileage').value) || 0
+        };
+        
+        // Если редактируем, добавляем текущий пробег и статус
+        if (id) {
+            data.current_mileage = parseInt(document.getElementById('current-mileage').value) || 0;
+            data.status = document.getElementById('vehicle-status').value;
+        }
+        
+        const headers = getAuthHeaders();
+        const url = id ? `/api/vehicles/${id}` : '/api/vehicles';
+        const method = id ? 'PUT' : 'POST';
+        
+        try {
+            const response = await fetch(url, {
+                method,
+                headers,
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                closeVehicleModal();
+                loadVehicles();
+            } else {
+                const error = await response.json();
+                showErrorModal(error.error || 'Ошибка сохранения');
+            }
+        } catch (error) {
+            showErrorModal('Ошибка соединения с сервером');
+        }
+    });
+    
+    window.onclick = function(event) {
+        const modal = document.getElementById('vehicle-modal');
+        if (event.target == modal) {
+            closeVehicleModal();
+        }
+    }
+    
+    loadVehicles();
+</script>
+{% endblock %}
+

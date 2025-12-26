@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+
+{% block title %}Детали ТС - Управление автопарком{% endblock %}
+
+{% block content %}
+<div id="vehicle-detail">
+    <div class="loading">Загрузка данных о транспортном средстве...</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const vehicleId = {{ vehicle_id }};
+    
+    console.log('Loading vehicle detail for ID:', vehicleId);
+    
+    async function loadVehicleDetail() {
+        console.log('loadVehicleDetail called for vehicle ID:', vehicleId);
+        
+        if (!vehicleId || isNaN(vehicleId)) {
+            showErrorModal('Неверный ID транспортного средства');
+            document.getElementById('vehicle-detail').innerHTML = '<p style="color: #E74C3C;">Ошибка: неверный ID транспортного средства</p>';
+            return;
+        }
+        const headers = getAuthHeaders();
+        try {
+            const [vehicleResponse, maintenanceResponse, repairsResponse, mileageResponse, predictionResponse] = await Promise.all([
+                fetch(`/api/vehicles/${vehicleId}`, { headers }),
+                fetch(`/api/vehicles/${vehicleId}/maintenance`, { headers }),
+                fetch(`/api/vehicles/${vehicleId}/repairs`, { headers }),
+                fetch(`/api/vehicles/${vehicleId}/mileage`, { headers }),
+                fetch(`/api/vehicles/${vehicleId}/prediction`, { headers })
+            ]);
+            
+            // Проверяем статусы ответов
+            if (!vehicleResponse.ok) {
+                if (vehicleResponse.status === 401 || vehicleResponse.status === 422) {
+                    window.location.href = '/login';
+                    return;
+                }
+                throw new Error(`Ошибка загрузки ТС: ${vehicleResponse.status}`);
+            }
+            
+            if (!maintenanceResponse.ok) {
+                console.warn('Ошибка загрузки ТО:', maintenanceResponse.status);
+            }
+            
+            if (!repairsResponse.ok) {
+                console.warn('Ошибка загрузки ремонтов:', repairsResponse.status);
+            }
+            
+            if (!mileageResponse.ok) {
+                console.warn('Ошибка загрузки пробега:', mileageResponse.status);
+            }
+            
+            if (!predictionResponse.ok) {
+                console.warn('Ошибка загрузки прогноза:', predictionResponse.status);
+            }
+            
+            const vehicle = await vehicleResponse.json();
+            const maintenance = maintenanceResponse.ok ? await maintenanceResponse.json() : [];
+            const repairs = repairsResponse.ok ? await repairsResponse.json() : [];
+            const mileage = mileageResponse.ok ? await mileageResponse.json() : [];
+            const prediction = predictionResponse.ok ? await predictionResponse.json() : { 
+                prediction: { 
+                    predicted_date: new Date().toISOString(), 
+                    predicted_mileage: vehicle.current_mileage || 0, 
+                    days_remaining: 0, 
+                    km_remaining: 0 
+                }, 
+                daily_mileage: 0, 
+                status: 'unknown' 
+            };
+            
+            console.log('Data loaded:', { vehicle, maintenance: maintenance.length, repairs: repairs.length });
+            
+            const container = document.getElementById('vehicle-detail');
+            if (!container) {
+                console.error('Container not found!');
+                return;
+            }
+            container.innerHTML = `
+                <div class="card">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <h2>${vehicle.brand} ${vehicle.model} (${vehicle.reg_number})</h2>
+                        <button class="btn btn-warning role-admin role-mechanic" onclick="openEditVehicleModal()">Редактировать ТС</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                        <div><strong>Год:</strong> ${vehicle.year}</div>
+                        <div><strong>VIN:</strong> ${vehicle.vin}</div>
+                        <div><strong>Тип:</strong> ${vehicle.vehicle_type === 'truck' ? 'Грузовик' : vehicle.vehicle_type === 'car' ? 'Легковой' : 'Спецтехника'}</div>
+                        <div><strong>Текущий пробег:</strong> ${new Intl.NumberFormat('ru-RU').format(vehicle.current_mileage)} км</div>
+                        <div><strong>Статус:</strong> <span class="badge ${vehicle.status === 'active' ? 'badge-success' : vehicle.status === 'repair' ? 'badge-danger' : 'badge-secondary'}">${vehicle.status === 'active' ? 'Активен' : vehicle.status === 'repair' ? 'Ремонт' : 'Неактивен'}</span></div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Прогноз следующего ТО</h2>
+                    </div>
+                    <div>
+                        <p><strong>Дата:</strong> ${new Date(prediction.prediction.predicted_date).toLocaleDateString('ru-RU')}</p>
+                        <p><strong>Пробег:</strong> ${new Intl.NumberFormat('ru-RU').format(prediction.prediction.predicted_mileage)} км</p>
+                        <p><strong>Осталось дней:</strong> ${prediction.prediction.days_remaining}</p>
+                        <p><strong>Среднесуточный пробег:</strong> ${prediction.daily_mileage.toFixed(1)} км/день</p>
+                        <p><strong>Статус:</strong> <span class="badge ${prediction.status === 'overdue' || prediction.status === 'urgent' ? 'badge-danger' : prediction.status === 'warning' ? 'badge-warning' : 'badge-success'}">${prediction.status === 'overdue' ? 'Просрочено' : prediction.status === 'urgent' ? 'Срочно' : prediction.status === 'warning' ? 'Скоро' : 'Норма'}</span></p>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <h2>История ТО</h2>
+                        <button class="btn btn-primary role-admin role-mechanic" onclick="openAddMaintenanceModal()">+ Добавить ТО</button>
+                    </div>
+                    ${maintenance.length > 0 ? `
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Дата</th>
+                                        <th>Тип</th>
+                                        <th>Пробег</th>
+                                        <th>Стоимость</th>
+                                        <th>Описание</th>
+                                        <th class="role-admin role-mechanic">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${maintenance.map(m => `
+                                        <tr>
+                                            <td>${new Date(m.date).toLocaleDateString('ru-RU')}</td>
+                                            <td>${m.type}</td>
+                                            <td>${new Intl.NumberFormat('ru-RU').format(m.mileage)} км</td>
+                                            <td>${new Intl.NumberFormat('ru-RU').format(m.cost)} ₽</td>
+                                            <td>${m.description || '-'}</td>
+                                            <td class="role-admin role-mechanic">
+                                                <button onclick="editMaintenance(${m.id})" class="btn btn-warning" style="padding: 0.3rem 0.6rem; font-size: 0.85rem; margin-right: 0.5rem;">Изменить</button>
+                                                <button onclick="deleteMaintenance(${m.id})" class="btn btn-danger" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">Удалить</button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : '<p style="color: #7F8C8D;">Нет записей о ТО</p>'}
+                </div>
+                
+                <!-- Modal для добавления/редактирования ТО -->
+                <div id="maintenance-modal" class="modal">
+                    <div class="modal-content">
+                        <span class="close" onclick="closeMaintenanceModal()">&times;</span>
+                        <h2 id="maintenance-modal-title">Добавить ТО</h2>
+                        <form id="maintenance-form">
+                            <input type="hidden" id="maintenance-id">
+                            <input type="hidden" id="maintenance-vehicle-id" value="${vehicleId}">
+                            <div class="form-group">
+                                <label for="maintenance-type">Тип ТО *</label>
+                                <select id="maintenance-type" required>
+                                    <option value="regular">Регулярное</option>
+                                    <option value="oil_change">Замена масла</option>
+                                    <option value="tire_change">Замена шин</option>
+                                    <option value="brake_service">Обслуживание тормозов</option>
+                                    <option value="inspection">Осмотр</option>
+                                    <option value="other">Другое</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="maintenance-date">Дата *</label>
+                                <input type="date" id="maintenance-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="maintenance-mileage">Пробег (км) *</label>
+                                <input type="number" id="maintenance-mileage" min="0" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="maintenance-cost">Стоимость (₽)</label>
+                                <input type="number" id="maintenance-cost" min="0" value="0" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label for="maintenance-description">Описание</label>
+                                <textarea id="maintenance-description" rows="3"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="maintenance-next-km">Следующее ТО при пробеге (км)</label>
+                                <input type="number" id="maintenance-next-km" min="0">
+                                <small style="color: #7F8C8D;">Оставьте пустым для автоматического расчета (+10000 км)</small>
+                            </div>
+                            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                                <button type="submit" class="btn btn-primary" style="flex: 1;">Сохранить</button>
+                                <button type="button" class="btn btn-secondary" onclick="closeMaintenanceModal()" style="flex: 1;">Отмена</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Ремонты</h2>
+                    </div>
+                    ${repairs.length > 0 ? `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Дата начала</th>
+                                    <th>Дата окончания</th>
+                                    <th>Статус</th>
+                                    <th>Стоимость</th>
+                                    <th>Описание</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${repairs.map(r => `
+                                    <tr>
+                                        <td>${new Date(r.start_date).toLocaleDateString('ru-RU')}</td>
+                                        <td>${r.end_date ? new Date(r.end_date).toLocaleDateString('ru-RU') : '-'}</td>
+                                        <td><span class="badge ${r.status === 'completed' ? 'badge-success' : r.status === 'in_progress' ? 'badge-warning' : 'badge-secondary'}">${r.status === 'completed' ? 'Завершен' : r.status === 'in_progress' ? 'В работе' : 'Ожидает'}</span></td>
+                                        <td>${new Intl.NumberFormat('ru-RU').format(r.cost)} ₽</td>
+                                        <td>${r.description}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    ` : '<p style="color: #7F8C8D;">Нет записей о ремонтах</p>'}
+                </div>
+                
+                <!-- Modal для редактирования ТС -->
+                <div id="vehicle-edit-modal" class="modal">
+                    <div class="modal-content">
+                        <span class="close" onclick="closeVehicleEditModal()">&times;</span>
+                        <h2>Редактировать транспортное средство</h2>
+                        <form id="vehicle-edit-form">
+                            <div class="form-group">
+                                <label for="edit-brand">Марка *</label>
+                                <input type="text" id="edit-brand" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-model">Модель *</label>
+                                <input type="text" id="edit-model" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-year">Год *</label>
+                                <input type="number" id="edit-year" min="1900" max="2100" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-vin">VIN *</label>
+                                <input type="text" id="edit-vin" maxlength="17" required>
+                                <small style="color: #7F8C8D;">17 символов, без I, O, Q</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-reg-number">Гос. номер *</label>
+                                <input type="text" id="edit-reg-number" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-vehicle-type">Тип ТС *</label>
+                                <select id="edit-vehicle-type" required>
+                                    <option value="truck">Грузовик</option>
+                                    <option value="car">Легковой</option>
+                                    <option value="special">Спецтехника</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-current-mileage">Текущий пробег (км)</label>
+                                <input type="number" id="edit-current-mileage" min="0" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-status">Статус</label>
+                                <select id="edit-status">
+                                    <option value="active">Активен</option>
+                                    <option value="repair">В ремонте</option>
+                                    <option value="maintenance">На ТО</option>
+                                    <option value="inactive">Неактивен</option>
+                                </select>
+                            </div>
+                            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                                <button type="submit" class="btn btn-primary" style="flex: 1;">Сохранить</button>
+                                <button type="button" class="btn btn-secondary" onclick="closeVehicleEditModal()" style="flex: 1;">Отмена</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            
+            // Заполняем форму редактирования данными ТС
+            document.getElementById('edit-brand').value = vehicle.brand;
+            document.getElementById('edit-model').value = vehicle.model;
+            document.getElementById('edit-year').value = vehicle.year;
+            document.getElementById('edit-vin').value = vehicle.vin;
+            document.getElementById('edit-reg-number').value = vehicle.reg_number;
+            document.getElementById('edit-vehicle-type').value = vehicle.vehicle_type;
+            document.getElementById('edit-current-mileage').value = vehicle.current_mileage;
+            document.getElementById('edit-status').value = vehicle.status;
+            
+            // Обновляем отображение элементов в зависимости от роли после загрузки данных
+            if (typeof updateUIForRole === 'function' && typeof currentUserRole !== 'undefined' && currentUserRole) {
+                updateUIForRole(currentUserRole);
+            }
+            
+            // Добавляем обработчик формы после создания модального окна
+            const maintenanceForm = document.getElementById('maintenance-form');
+            if (maintenanceForm) {
+                // Удаляем старый обработчик, если есть
+                const newForm = maintenanceForm.cloneNode(true);
+                maintenanceForm.parentNode.replaceChild(newForm, maintenanceForm);
+                // Новый обработчик будет добавлен через делегирование событий
+            }
+        } catch (error) {
+            console.error('Error loading vehicle detail:', error);
+            if (typeof showErrorModal === 'function') {
+                showErrorModal('Ошибка загрузки данных о транспортном средстве: ' + (error.message || 'Неизвестная ошибка'));
+            }
+            const container = document.getElementById('vehicle-detail');
+            if (container) {
+                container.innerHTML = '<div class="card"><div class="card-header"><h2>Ошибка загрузки</h2></div><p style="color: #E74C3C; padding: 1rem;">Ошибка загрузки данных. Попробуйте обновить страницу или вернуться к списку транспортных средств.</p><a href="/vehicles" class="btn btn-primary">Вернуться к списку</a></div>';
+            }
+        }
+    }
+    
+    function openEditVehicleModal() {
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для редактирования транспортных средств');
+            return;
+        }
+        document.getElementById('vehicle-edit-modal').style.display = 'block';
+    }
+    
+    function closeVehicleEditModal() {
+        document.getElementById('vehicle-edit-modal').style.display = 'none';
+    }
+    
+    function openAddMaintenanceModal() {
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для добавления ТО');
+            return;
+        }
+        
+        document.getElementById('maintenance-form').reset();
+        document.getElementById('maintenance-id').value = '';
+        document.getElementById('maintenance-modal-title').textContent = 'Добавить ТО';
+        document.getElementById('maintenance-modal').style.display = 'block';
+    }
+    
+    function closeMaintenanceModal() {
+        document.getElementById('maintenance-modal').style.display = 'none';
+    }
+    
+    async function editMaintenance(id) {
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для редактирования ТО');
+            return;
+        }
+        
+        const headers = getAuthHeaders();
+        try {
+            // Получаем данные ТО из списка maintenance
+            const maintenanceList = await fetch(`/api/vehicles/${vehicleId}/maintenance`, { headers });
+            const maintenanceData = await maintenanceList.json();
+            const maintenance = maintenanceData.find(m => m.id === id);
+            
+            if (!maintenance) {
+                showErrorModal('Запись ТО не найдена');
+                return;
+            }
+            
+            document.getElementById('maintenance-id').value = maintenance.id;
+            document.getElementById('maintenance-type').value = maintenance.type;
+            document.getElementById('maintenance-date').value = maintenance.date;
+            document.getElementById('maintenance-mileage').value = maintenance.mileage;
+            document.getElementById('maintenance-cost').value = maintenance.cost;
+            document.getElementById('maintenance-description').value = maintenance.description || '';
+            document.getElementById('maintenance-next-km').value = maintenance.next_maintenance_km || '';
+            document.getElementById('maintenance-modal-title').textContent = 'Редактировать ТО';
+            document.getElementById('maintenance-modal').style.display = 'block';
+        } catch (error) {
+            showErrorModal('Ошибка загрузки данных');
+        }
+    }
+    
+    async function deleteMaintenance(id) {
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для удаления ТО');
+            return;
+        }
+        
+        if (!confirm('Вы уверены, что хотите удалить эту запись о ТО?')) {
+            return;
+        }
+        
+        const headers = getAuthHeaders();
+        try {
+            const response = await fetch(`/api/maintenance/${id}`, {
+                method: 'DELETE',
+                headers
+            });
+            
+            if (response.ok) {
+                loadVehicleDetail();
+            } else {
+                const error = await response.json();
+                showErrorModal(error.error || 'Ошибка удаления');
+            }
+        } catch (error) {
+            showErrorModal('Ошибка соединения с сервером');
+        }
+    }
+    
+    // Функция для обработки отправки формы ТО
+    function handleMaintenanceFormSubmit(e) {
+        e.preventDefault();
+        
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для создания или изменения ТО');
+            return;
+        }
+        
+        const id = document.getElementById('maintenance-id').value;
+        const data = {
+            vehicle_id: parseInt(document.getElementById('maintenance-vehicle-id').value),
+            type: document.getElementById('maintenance-type').value,
+            date: document.getElementById('maintenance-date').value,
+            mileage: parseInt(document.getElementById('maintenance-mileage').value),
+            cost: parseFloat(document.getElementById('maintenance-cost').value) || 0,
+            description: document.getElementById('maintenance-description').value,
+            next_maintenance_km: document.getElementById('maintenance-next-km').value ? parseInt(document.getElementById('maintenance-next-km').value) : undefined
+        };
+        
+        const headers = getAuthHeaders();
+        const url = id ? `/api/maintenance/${id}` : '/api/maintenance';
+        const method = id ? 'PUT' : 'POST';
+        
+        try {
+            fetch(url, {
+                method,
+                headers,
+                body: JSON.stringify(data)
+            }).then(response => {
+                if (response.ok) {
+                    closeMaintenanceModal();
+                    loadVehicleDetail();
+                } else {
+                    return response.json().then(error => {
+                        showErrorModal(error.error || 'Ошибка сохранения');
+                    });
+                }
+            }).catch(error => {
+                showErrorModal('Ошибка соединения с сервером');
+            });
+        } catch (error) {
+            showErrorModal('Ошибка соединения с сервером');
+        }
+    }
+    
+    // Используем делегирование событий для формы, которая создается динамически
+    document.addEventListener('submit', function(e) {
+        if (e.target && e.target.id === 'maintenance-form') {
+            handleMaintenanceFormSubmit(e);
+        }
+    });
+    
+    // Обработчик формы редактирования ТС
+    function handleVehicleEditFormSubmit(e) {
+        e.preventDefault();
+        
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для редактирования транспортных средств');
+            return;
+        }
+        
+        const data = {
+            brand: document.getElementById('edit-brand').value,
+            model: document.getElementById('edit-model').value,
+            year: parseInt(document.getElementById('edit-year').value),
+            vin: document.getElementById('edit-vin').value,
+            reg_number: document.getElementById('edit-reg-number').value,
+            vehicle_type: document.getElementById('edit-vehicle-type').value,
+            current_mileage: parseInt(document.getElementById('edit-current-mileage').value) || 0,
+            status: document.getElementById('edit-status').value
+        };
+        
+        const headers = getAuthHeaders();
+        
+        fetch(`/api/vehicles/${vehicleId}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(data)
+        }).then(response => {
+            if (response.ok) {
+                closeVehicleEditModal();
+                loadVehicleDetail();
+            } else {
+                return response.json().then(error => {
+                    showErrorModal(error.error || 'Ошибка сохранения');
+                });
+            }
+        }).catch(error => {
+            showErrorModal('Ошибка соединения с сервером');
+        });
+    }
+    
+    // Используем делегирование событий для формы редактирования ТС
+    document.addEventListener('submit', function(e) {
+        if (e.target && e.target.id === 'vehicle-edit-form') {
+            handleVehicleEditFormSubmit(e);
+        }
+    });
+    
+    window.onclick = function(event) {
+        const maintenanceModal = document.getElementById('maintenance-modal');
+        const vehicleModal = document.getElementById('vehicle-edit-modal');
+        
+        if (event.target == maintenanceModal && maintenanceModal) {
+            closeMaintenanceModal();
+        }
+        if (event.target == vehicleModal && vehicleModal) {
+            closeVehicleEditModal();
+        }
+    }
+    
+    // Загружаем данные после полной загрузки страницы и всех скриптов
+    function initVehicleDetail() {
+        // Ждем, пока все функции из base.html будут доступны
+        if (typeof getAuthHeaders === 'function' && typeof showErrorModal === 'function') {
+            loadVehicleDetail();
+        } else {
+            // Повторяем попытку через небольшую задержку
+            setTimeout(initVehicleDetail, 100);
+        }
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(initVehicleDetail, 100);
+        });
+    } else {
+        setTimeout(initVehicleDetail, 100);
+    }
+</script>
+{% endblock %}
+

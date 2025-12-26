@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+
+{% block title %}Календарь ТО - Управление автопарком{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Календарь технического обслуживания</h2>
+        <button class="btn btn-primary role-admin role-mechanic" onclick="openAddMaintenanceModal()">+ Добавить ТО</button>
+    </div>
+    <div id="maintenance-calendar">
+        <div class="loading">Загрузка...</div>
+    </div>
+</div>
+
+<!-- Modal для добавления/редактирования ТО -->
+<div id="maintenance-modal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeMaintenanceModal()">&times;</span>
+        <h2 id="maintenance-modal-title">Добавить ТО</h2>
+        <form id="maintenance-form">
+            <input type="hidden" id="maintenance-id">
+            <div class="form-group">
+                <label for="maintenance-vehicle-select">Транспортное средство *</label>
+                <select id="maintenance-vehicle-select" required>
+                    <option value="">Выберите ТС...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="maintenance-type">Тип ТО *</label>
+                <select id="maintenance-type" required>
+                    <option value="regular">Регулярное</option>
+                    <option value="oil_change">Замена масла</option>
+                    <option value="tire_change">Замена шин</option>
+                    <option value="brake_service">Обслуживание тормозов</option>
+                    <option value="inspection">Осмотр</option>
+                    <option value="other">Другое</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="maintenance-date">Дата *</label>
+                <input type="date" id="maintenance-date" required>
+            </div>
+            <div class="form-group">
+                <label for="maintenance-mileage">Пробег (км) *</label>
+                <input type="number" id="maintenance-mileage" min="0" required>
+            </div>
+            <div class="form-group">
+                <label for="maintenance-cost">Стоимость (₽)</label>
+                <input type="number" id="maintenance-cost" min="0" value="0" step="0.01">
+            </div>
+            <div class="form-group">
+                <label for="maintenance-description">Описание</label>
+                <textarea id="maintenance-description" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="maintenance-next-km">Следующее ТО при пробеге (км)</label>
+                <input type="number" id="maintenance-next-km" min="0">
+                <small style="color: #7F8C8D;">Оставьте пустым для автоматического расчета (+10000 км)</small>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-primary" style="flex: 1;">Сохранить</button>
+                <button type="button" class="btn btn-secondary" onclick="closeMaintenanceModal()" style="flex: 1;">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let allVehicles = [];
+    
+    async function loadMaintenance() {
+        const headers = getAuthHeaders();
+        try {
+            // Загружаем все записи ТО
+            const response = await fetch('/api/maintenance/all', { headers });
+            
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 422) {
+                    window.location.href = '/login';
+                    return;
+                }
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const maintenance = await response.json();
+            const container = document.getElementById('maintenance-calendar');
+            
+            if (!Array.isArray(maintenance)) {
+                container.innerHTML = '<p style="color: #E74C3C;">Ошибка: неверный формат данных</p>';
+                console.error('Expected array, got:', maintenance);
+                return;
+            }
+            
+            // Загружаем список ТС для формы
+            if (allVehicles.length === 0) {
+                const vehiclesResponse = await fetch('/api/vehicles', { headers });
+                if (vehiclesResponse.ok) {
+                    allVehicles = await vehiclesResponse.json();
+                }
+            }
+            
+            if (maintenance.length === 0) {
+                container.innerHTML = '<p style="color: #7F8C8D;">Нет записей о ТО</p>';
+            } else {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'table-wrapper';
+                
+                const table = document.createElement('table');
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Дата</th>
+                            <th>ТС</th>
+                            <th>Гос. номер</th>
+                            <th>Тип ТО</th>
+                            <th>Пробег</th>
+                            <th>Стоимость</th>
+                            <th>Описание</th>
+                            <th>Статус ТС</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${maintenance.map(item => {
+                            const date = new Date(item.date);
+                            return `
+                                <tr>
+                                    <td>${date.toLocaleDateString('ru-RU')}</td>
+                                    <td>${item.vehicle.brand} ${item.vehicle.model}</td>
+                                    <td>${item.vehicle.reg_number}</td>
+                                    <td>${item.type}</td>
+                                    <td>${new Intl.NumberFormat('ru-RU').format(item.mileage)} км</td>
+                                    <td>${new Intl.NumberFormat('ru-RU').format(item.cost)} ₽</td>
+                                    <td>${item.description || '-'}</td>
+                                    <td><span class="badge ${item.vehicle.status === 'active' ? 'badge-success' : item.vehicle.status === 'maintenance' ? 'badge-warning' : 'badge-danger'}">${item.vehicle.status === 'active' ? 'Активен' : item.vehicle.status === 'maintenance' ? 'На ТО' : item.vehicle.status === 'repair' ? 'Ремонт' : 'Неактивен'}</span></td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                `;
+                
+                // Мобильная версия
+                const mobileTable = document.createElement('div');
+                mobileTable.className = 'table-mobile';
+                mobileTable.innerHTML = maintenance.map(item => {
+                    const date = new Date(item.date);
+                    return `
+                        <div class="table-card">
+                            <div class="table-card-row">
+                                <span class="table-card-label">Дата</span>
+                                <span class="table-card-value">${date.toLocaleDateString('ru-RU')}</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">ТС</span>
+                                <span class="table-card-value">${item.vehicle.brand} ${item.vehicle.model}</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Гос. номер</span>
+                                <span class="table-card-value">${item.vehicle.reg_number}</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Тип ТО</span>
+                                <span class="table-card-value">${item.type}</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Пробег</span>
+                                <span class="table-card-value">${new Intl.NumberFormat('ru-RU').format(item.mileage)} км</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Стоимость</span>
+                                <span class="table-card-value">${new Intl.NumberFormat('ru-RU').format(item.cost)} ₽</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Описание</span>
+                                <span class="table-card-value">${item.description || '-'}</span>
+                            </div>
+                            <div class="table-card-row">
+                                <span class="table-card-label">Статус ТС</span>
+                                <span class="table-card-value"><span class="badge ${item.vehicle.status === 'active' ? 'badge-success' : item.vehicle.status === 'maintenance' ? 'badge-warning' : 'badge-danger'}">${item.vehicle.status === 'active' ? 'Активен' : item.vehicle.status === 'maintenance' ? 'На ТО' : item.vehicle.status === 'repair' ? 'Ремонт' : 'Неактивен'}</span></span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                wrapper.appendChild(table);
+                wrapper.appendChild(mobileTable);
+                container.innerHTML = '';
+                container.appendChild(wrapper);
+            }
+            
+            // Обновляем отображение элементов в зависимости от роли
+            if (typeof updateUIForRole === 'function' && typeof currentUserRole !== 'undefined' && currentUserRole) {
+                updateUIForRole(currentUserRole);
+            }
+        } catch (error) {
+            console.error('Error loading maintenance:', error);
+            showErrorModal('Ошибка загрузки календаря ТО: ' + (error.message || 'Неизвестная ошибка'));
+            document.getElementById('maintenance-calendar').innerHTML = '<p style="color: #E74C3C;">Ошибка загрузки данных</p>';
+        }
+    }
+    
+    function openAddMaintenanceModal() {
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для добавления ТО');
+            return;
+        }
+        
+        document.getElementById('maintenance-form').reset();
+        document.getElementById('maintenance-id').value = '';
+        document.getElementById('maintenance-modal-title').textContent = 'Добавить ТО';
+        
+        // Заполняем список ТС
+        const select = document.getElementById('maintenance-vehicle-select');
+        select.innerHTML = '<option value="">Выберите ТС...</option>';
+        allVehicles.forEach(v => {
+            const option = document.createElement('option');
+            option.value = v.id;
+            option.textContent = `${v.brand} ${v.model} (${v.reg_number})`;
+            select.appendChild(option);
+        });
+        
+        document.getElementById('maintenance-modal').style.display = 'block';
+    }
+    
+    function closeMaintenanceModal() {
+        document.getElementById('maintenance-modal').style.display = 'none';
+    }
+    
+    async function editMaintenance(id) {
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для редактирования ТО');
+            return;
+        }
+        
+        const headers = getAuthHeaders();
+        try {
+            // Получаем все записи ТО
+            const response = await fetch('/api/maintenance/all', { headers });
+            const maintenanceList = await response.json();
+            const maintenance = maintenanceList.find(m => m.id === id);
+            
+            if (!maintenance) {
+                showErrorModal('Запись ТО не найдена');
+                return;
+            }
+            
+            document.getElementById('maintenance-id').value = maintenance.id;
+            
+            // Заполняем список ТС
+            const select = document.getElementById('maintenance-vehicle-select');
+            select.innerHTML = '<option value="">Выберите ТС...</option>';
+            allVehicles.forEach(v => {
+                const option = document.createElement('option');
+                option.value = v.id;
+                option.textContent = `${v.brand} ${v.model} (${v.reg_number})`;
+                if (v.id === maintenance.vehicle.id) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+            
+            document.getElementById('maintenance-type').value = maintenance.type;
+            document.getElementById('maintenance-date').value = maintenance.date;
+            document.getElementById('maintenance-mileage').value = maintenance.mileage;
+            document.getElementById('maintenance-cost').value = maintenance.cost;
+            document.getElementById('maintenance-description').value = maintenance.description || '';
+            document.getElementById('maintenance-next-km').value = maintenance.next_maintenance_km || '';
+            document.getElementById('maintenance-modal-title').textContent = 'Редактировать ТО';
+            document.getElementById('maintenance-modal').style.display = 'block';
+        } catch (error) {
+            showErrorModal('Ошибка загрузки данных');
+        }
+    }
+    
+    async function deleteMaintenance(id) {
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для удаления ТО');
+            return;
+        }
+        
+        if (!confirm('Вы уверены, что хотите удалить эту запись о ТО?')) {
+            return;
+        }
+        
+        const headers = getAuthHeaders();
+        try {
+            const response = await fetch(`/api/maintenance/${id}`, {
+                method: 'DELETE',
+                headers
+            });
+            
+            if (response.ok) {
+                loadMaintenance();
+            } else {
+                const error = await response.json();
+                showErrorModal(error.error || 'Ошибка удаления');
+            }
+        } catch (error) {
+            showErrorModal('Ошибка соединения с сервером');
+        }
+    }
+    
+    // Обработчик формы ТО
+    function handleMaintenanceFormSubmit(e) {
+        e.preventDefault();
+        
+        if (!hasPermission(['admin', 'mechanic'])) {
+            showErrorModal('У вас нет прав для создания или изменения ТО');
+            return;
+        }
+        
+        const id = document.getElementById('maintenance-id').value;
+        const vehicleId = document.getElementById('maintenance-vehicle-select').value;
+        
+        if (!vehicleId) {
+            showErrorModal('Выберите транспортное средство');
+            return;
+        }
+        
+        const data = {
+            vehicle_id: parseInt(vehicleId),
+            type: document.getElementById('maintenance-type').value,
+            date: document.getElementById('maintenance-date').value,
+            mileage: parseInt(document.getElementById('maintenance-mileage').value),
+            cost: parseFloat(document.getElementById('maintenance-cost').value) || 0,
+            description: document.getElementById('maintenance-description').value,
+            next_maintenance_km: document.getElementById('maintenance-next-km').value ? parseInt(document.getElementById('maintenance-next-km').value) : undefined
+        };
+        
+        const headers = getAuthHeaders();
+        const url = id ? `/api/maintenance/${id}` : '/api/maintenance';
+        const method = id ? 'PUT' : 'POST';
+        
+        fetch(url, {
+            method,
+            headers,
+            body: JSON.stringify(data)
+        }).then(response => {
+            if (response.ok) {
+                closeMaintenanceModal();
+                loadMaintenance();
+            } else {
+                return response.json().then(error => {
+                    showErrorModal(error.error || 'Ошибка сохранения');
+                });
+            }
+        }).catch(error => {
+            showErrorModal('Ошибка соединения с сервером');
+        });
+    }
+    
+    // Используем делегирование событий для формы
+    document.addEventListener('submit', function(e) {
+        if (e.target && e.target.id === 'maintenance-form') {
+            handleMaintenanceFormSubmit(e);
+        }
+    });
+    
+    window.onclick = function(event) {
+        const modal = document.getElementById('maintenance-modal');
+        if (event.target == modal && modal) {
+            closeMaintenanceModal();
+        }
+    }
+    
+    loadMaintenance();
+</script>
+{% endblock %}
+

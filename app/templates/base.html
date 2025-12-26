@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Управление автопарком{% endblock %}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #ECF0F1;
+            color: #2C3E50;
+            line-height: 1.6;
+        }
+        
+        .header {
+            background-color: #2C3E50;
+            color: #FFFFFF;
+            padding: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .logo {
+            font-size: 1.2rem;
+            font-weight: bold;
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .mobile-menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: #FFFFFF;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+        }
+        
+        .nav {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .nav a {
+            color: #FFFFFF;
+            text-decoration: none;
+            padding: 0.5rem 0.8rem;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+            white-space: nowrap;
+            font-size: 0.9rem;
+        }
+        
+        .nav a:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .nav a.active {
+            background-color: #E74C3C;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .user-info span {
+            display: none;
+        }
+        
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background-color: #2C3E50;
+            color: #FFFFFF;
+        }
+        
+        .btn-primary:hover {
+            background-color: #34495E;
+        }
+        
+        .btn-danger {
+            background-color: #E74C3C;
+            color: #FFFFFF;
+        }
+        
+        .btn-danger:hover {
+            background-color: #C0392B;
+        }
+        
+        .btn-success {
+            background-color: #27AE60;
+            color: #FFFFFF;
+        }
+        
+        .btn-success:hover {
+            background-color: #229954;
+        }
+        
+        .btn-warning {
+            background-color: #F39C12;
+            color: #FFFFFF;
+        }
+        
+        .btn-warning:hover {
+            background-color: #E67E22;
+        }
+        
+        .btn-secondary {
+            background-color: #7F8C8D;
+            color: #FFFFFF;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #5D6D7E;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 1rem auto;
+            padding: 0 1rem;
+        }
+        
+        .card {
+            background-color: #FFFFFF;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .card-header {
+            border-bottom: 2px solid #ECF0F1;
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .card-header h2 {
+            color: #2C3E50;
+            font-size: 1.5rem;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 1rem 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            min-width: 600px;
+        }
+        
+        table th {
+            background-color: #2C3E50;
+            color: #FFFFFF;
+            padding: 0.8rem 0.5rem;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        
+        table td {
+            padding: 0.8rem 0.5rem;
+            border-bottom: 1px solid #ECF0F1;
+            font-size: 0.9rem;
+        }
+        
+        table tr:hover {
+            background-color: #F8F9FA;
+        }
+        
+        /* Мобильная версия таблиц - карточки */
+        .table-mobile {
+            display: none;
+        }
+        
+        .table-card {
+            background: #FFFFFF;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .table-card-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #ECF0F1;
+        }
+        
+        .table-card-row:last-child {
+            border-bottom: none;
+        }
+        
+        .table-card-label {
+            font-weight: 600;
+            color: #7F8C8D;
+            font-size: 0.85rem;
+        }
+        
+        .table-card-value {
+            color: #2C3E50;
+            text-align: right;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #2C3E50;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.7rem;
+            border: 1px solid #7F8C8D;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #2C3E50;
+        }
+        
+        .alert {
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        
+        .alert-success {
+            background-color: #D5F4E6;
+            color: #27AE60;
+            border-left: 4px solid #27AE60;
+        }
+        
+        .alert-danger {
+            background-color: #FADBD8;
+            color: #E74C3C;
+            border-left: 4px solid #E74C3C;
+        }
+        
+        .alert-warning {
+            background-color: #FEF5E7;
+            color: #F39C12;
+            border-left: 4px solid #F39C12;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.3rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        
+        .badge-success {
+            background-color: #27AE60;
+            color: #FFFFFF;
+        }
+        
+        .badge-danger {
+            background-color: #E74C3C;
+            color: #FFFFFF;
+        }
+        
+        .badge-warning {
+            background-color: #F39C12;
+            color: #FFFFFF;
+        }
+        
+        .badge-secondary {
+            background-color: #7F8C8D;
+            color: #FFFFFF;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background-color: #FFFFFF;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card h3 {
+            color: #7F8C8D;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+        
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #2C3E50;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: #FFFFFF;
+            margin: 5% auto;
+            padding: 1.5rem;
+            border-radius: 8px;
+            width: 95%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .close {
+            color: #7F8C8D;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: #2C3E50;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #7F8C8D;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        /* Модальное окно для ошибок */
+        .error-modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.3s;
+        }
+        
+        .error-modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .error-modal-content {
+            background-color: #FFFFFF;
+            padding: 2rem;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            animation: slideDown 0.3s;
+        }
+        
+        .error-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #E74C3C;
+        }
+        
+        .error-modal-header h3 {
+            color: #E74C3C;
+            margin: 0;
+            font-size: 1.3rem;
+        }
+        
+        .error-modal-body {
+            color: #2C3E50;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+        
+        .error-modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Скрытие элементов по ролям */
+        .role-admin,
+        .role-mechanic {
+            /* По умолчанию видимы, скрываются только для водителя через JS */
+        }
+        
+        .role-driver-only {
+            display: none;
+        }
+        
+        /* Мобильная адаптация */
+        @media (max-width: 768px) {
+            .header {
+                padding: 0.75rem;
+            }
+            
+            .logo {
+                font-size: 1rem;
+                min-width: auto;
+            }
+            
+            .mobile-menu-toggle {
+                display: block;
+            }
+            
+            .nav {
+                display: none;
+                flex-direction: column;
+                width: 100%;
+                gap: 0;
+                margin-top: 1rem;
+                background-color: rgba(0, 0, 0, 0.3);
+                border-radius: 4px;
+                padding: 0.5rem;
+            }
+            
+            .nav.active {
+                display: flex;
+            }
+            
+            .nav a {
+                padding: 0.75rem;
+                border-radius: 4px;
+                width: 100%;
+            }
+            
+            .user-info {
+                width: 100%;
+                justify-content: space-between;
+                margin-top: 0.5rem;
+            }
+            
+            .user-info span {
+                display: inline;
+                font-size: 0.85rem;
+            }
+            
+            .container {
+                padding: 0 0.5rem;
+                margin: 0.5rem auto;
+            }
+            
+            .card {
+                padding: 1rem;
+                margin-bottom: 1rem;
+            }
+            
+            .card-header h2 {
+                font-size: 1.2rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            
+            .stat-card {
+                padding: 1rem;
+            }
+            
+            .stat-card .value {
+                font-size: 1.5rem;
+            }
+            
+            table {
+                display: none;
+            }
+            
+            .table-mobile {
+                display: block;
+            }
+            
+            .table-wrapper {
+                margin: 0.5rem 0;
+            }
+            
+            .btn {
+                padding: 0.5rem 1rem;
+                font-size: 0.85rem;
+            }
+            
+            .form-group {
+                margin-bottom: 1rem;
+            }
+            
+            .form-group input,
+            .form-group select,
+            .form-group textarea {
+                padding: 0.6rem;
+                font-size: 16px; /* Предотвращает зум на iOS */
+            }
+            
+            .modal-content {
+                width: 100%;
+                margin: 0;
+                border-radius: 0;
+                max-height: 100vh;
+                padding: 1rem;
+            }
+            
+            .badge {
+                font-size: 0.75rem;
+                padding: 0.2rem 0.5rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .logo {
+                font-size: 0.9rem;
+            }
+            
+            .card-header {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .card-header h2 {
+                font-size: 1.1rem;
+            }
+            
+            .error-modal-content {
+                width: 100%;
+                margin: 0;
+                border-radius: 0;
+                max-height: 100vh;
+                padding: 1.5rem;
+            }
+            
+            .error-modal-header h3 {
+                font-size: 1.1rem;
+            }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">🚗 Управление автопарком</div>
+            <button class="mobile-menu-toggle" onclick="toggleMobileMenu()">☰</button>
+            <nav class="nav" id="main-nav">
+                <a href="/vehicles" class="{% if request.endpoint == 'web.vehicles' %}active{% endif %}">Транспорт</a>
+                <a href="/maintenance" class="{% if request.endpoint == 'web.maintenance' %}active{% endif %}">ТО</a>
+                <a href="/predictions" class="{% if request.endpoint == 'web.predictions' %}active{% endif %}">Прогнозы</a>
+                <a href="/notifications" class="{% if request.endpoint == 'web.notifications' %}active{% endif %}">Уведомления</a>
+            </nav>
+            <div class="user-info">
+                <span id="username">Пользователь</span>
+                <span id="user-role" style="font-size: 0.85rem; color: rgba(255,255,255,0.8);"></span>
+                <button class="btn btn-danger" onclick="logout()">Выход</button>
+            </div>
+        </div>
+    </header>
+    
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Модальное окно для ошибок -->
+    <div id="error-modal" class="error-modal">
+        <div class="error-modal-content">
+            <div class="error-modal-header">
+                <h3>⚠️ Ошибка</h3>
+                <span class="close" onclick="closeErrorModal()" style="font-size: 24px;">&times;</span>
+            </div>
+            <div class="error-modal-body" id="error-modal-message">
+                Произошла ошибка
+            </div>
+            <div class="error-modal-footer">
+                <button class="btn btn-primary" onclick="closeErrorModal()">Закрыть</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Глобальные переменные для роли пользователя
+        let currentUserRole = null;
+        let currentUserId = null;
+        
+        // Получение информации о пользователе из токена
+        function getUserInfo() {
+            const token = localStorage.getItem('access_token');
+            if (!token) return null;
+            
+            try {
+                // Декодируем JWT токен (без проверки подписи, только для получения данных)
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+                
+                const payload = JSON.parse(jsonPayload);
+                return {
+                    id: payload.sub,
+                    role: payload.role
+                };
+            } catch (e) {
+                console.error('Error decoding token:', e);
+                return null;
+            }
+        }
+        
+        // Инициализация информации о пользователе
+        const userInfo = getUserInfo();
+        if (userInfo) {
+            currentUserRole = userInfo.role;
+            currentUserId = userInfo.id;
+            
+            // Отображаем роль пользователя
+            const roleNames = {
+                'admin': 'Администратор',
+                'mechanic': 'Механик',
+                'driver': 'Водитель'
+            };
+            const roleEl = document.getElementById('user-role');
+            if (roleEl) {
+                roleEl.textContent = roleNames[currentUserRole] || currentUserRole;
+            }
+            
+            // Обновляем отображение элементов в зависимости от роли
+            updateUIForRole(currentUserRole);
+        }
+        
+        // Обновление UI в зависимости от роли
+        function updateUIForRole(role) {
+            // Скрываем/показываем элементы навигации
+            const navLinks = document.querySelectorAll('.nav a');
+            if (role === 'driver') {
+                // Водитель видит только определенные разделы
+                navLinks.forEach(link => {
+                    const href = link.getAttribute('href');
+                    // Водитель не видит раздел "Транспорт"
+                    if (href === '/vehicles') {
+                        link.style.display = 'none';
+                    } else {
+                        link.style.display = '';
+                    }
+                });
+            } else {
+                // Администратор и механик видят все разделы
+                navLinks.forEach(link => {
+                    link.style.display = '';
+                });
+            }
+            
+            // Скрываем/показываем элементы в зависимости от роли
+            if (role === 'driver') {
+                // Водитель - скрываем элементы для админа и механика
+                document.querySelectorAll('.role-admin, .role-mechanic').forEach(el => {
+                    el.style.display = 'none';
+                });
+                document.querySelectorAll('.role-driver-only').forEach(el => {
+                    el.style.display = 'block';
+                });
+            } else if (role === 'mechanic') {
+                // Механик - видит свои элементы и элементы админа
+                document.querySelectorAll('.role-mechanic, .role-admin').forEach(el => {
+                    el.style.display = '';
+                });
+                document.querySelectorAll('.role-driver-only').forEach(el => {
+                    el.style.display = 'none';
+                });
+            } else if (role === 'admin') {
+                // Администратор - видит все
+                document.querySelectorAll('.role-admin, .role-mechanic').forEach(el => {
+                    el.style.display = '';
+                });
+                document.querySelectorAll('.role-driver-only').forEach(el => {
+                    el.style.display = 'none';
+                });
+            }
+        }
+        
+        // Проверка прав доступа
+        function hasPermission(requiredRoles) {
+            if (!currentUserRole) return false;
+            return requiredRoles.includes(currentUserRole);
+        }
+        
+        // Показ модального окна с ошибкой
+        function showErrorModal(message, title = 'Ошибка') {
+            const modal = document.getElementById('error-modal');
+            const messageEl = document.getElementById('error-modal-message');
+            const titleEl = document.querySelector('.error-modal-header h3');
+            
+            if (titleEl) titleEl.textContent = '⚠️ ' + title;
+            if (messageEl) messageEl.textContent = message;
+            
+            modal.classList.add('active');
+        }
+        
+        // Закрытие модального окна с ошибкой
+        function closeErrorModal() {
+            const modal = document.getElementById('error-modal');
+            modal.classList.remove('active');
+        }
+        
+        // Закрытие по клику вне модального окна
+        document.addEventListener('click', function(event) {
+            const modal = document.getElementById('error-modal');
+            if (event.target === modal) {
+                closeErrorModal();
+            }
+        });
+        
+        // Обработка ошибок API запросов
+        function handleApiError(error, defaultMessage = 'Произошла ошибка при выполнении запроса') {
+            console.error('API Error:', error);
+            let message = defaultMessage;
+            
+            if (error.response) {
+                // Ошибка от сервера
+                if (error.response.status === 403) {
+                    message = 'У вас нет прав для выполнения этого действия';
+                } else if (error.response.status === 401) {
+                    message = 'Сессия истекла. Пожалуйста, войдите снова';
+                    setTimeout(() => {
+                        logout();
+                    }, 2000);
+                } else if (error.response.status === 422) {
+                    message = 'Ошибка валидации данных';
+                } else if (error.response.status >= 500) {
+                    message = 'Ошибка сервера. Попробуйте позже';
+                }
+                
+                // Пытаемся получить сообщение об ошибке из ответа
+                if (error.response.data && error.response.data.error) {
+                    message = error.response.data.error;
+                }
+            } else if (error.message) {
+                message = error.message;
+            }
+            
+            showErrorModal(message);
+        }
+        
+        // Обертка для fetch с обработкой ошибок
+        async function safeFetch(url, options = {}) {
+            try {
+                const response = await fetch(url, options);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw {
+                        response: {
+                            status: response.status,
+                            data: errorData
+                        },
+                        message: errorData.error || `HTTP error! status: ${response.status}`
+                    };
+                }
+                
+                return await response.json();
+            } catch (error) {
+                if (error.response) {
+                    handleApiError(error);
+                } else {
+                    showErrorModal('Ошибка соединения с сервером');
+                }
+                throw error;
+            }
+        }
+        
+        // Проверка токена при загрузке (только для страниц, которые не являются login)
+        // Проверка токена при загрузке (только для страниц, которые не являются login)
+        if (window.location.pathname !== '/login') {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = '/login';
+            } else {
+                // Проверяем валидность токена асинхронно, не блокируя загрузку страницы
+                fetch('/api/vehicles', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                }).then(response => {
+                    if (response.status === 401 || response.status === 422) {
+                        localStorage.removeItem('access_token');
+                        window.location.href = '/login';
+                    }
+                }).catch(() => {
+                    // Игнорируем ошибки сети при проверке
+                });
+            }
+        }
+        
+        function logout() {
+            localStorage.removeItem('access_token');
+            window.location.href = '/login';
+        }
+        
+        function getAuthHeaders() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = '/login';
+                return {};
+            }
+            return {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            };
+        }
+        
+        function toggleMobileMenu() {
+            const nav = document.getElementById('main-nav');
+            nav.classList.toggle('active');
+        }
+        
+        // Закрытие мобильного меню при клике вне его
+        document.addEventListener('click', function(event) {
+            const nav = document.getElementById('main-nav');
+            const toggle = document.querySelector('.mobile-menu-toggle');
+            if (nav && toggle && !nav.contains(event.target) && !toggle.contains(event.target)) {
+                nav.classList.remove('active');
+            }
+        });
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
+

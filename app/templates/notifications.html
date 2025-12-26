@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Уведомления - Управление автопарком{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>Уведомления</h2>
+    </div>
+    <div id="notifications-list">
+        <div class="loading">Загрузка...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadNotifications() {
+        const headers = getAuthHeaders();
+        try {
+            const response = await fetch('/api/maintenance/upcoming', { headers });
+            
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 422) {
+                    window.location.href = '/login';
+                    return;
+                }
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const upcoming = await response.json();
+            const container = document.getElementById('notifications-list');
+            
+            if (!Array.isArray(upcoming)) {
+                container.innerHTML = '<p style="color: #E74C3C;">Ошибка: неверный формат данных</p>';
+                console.error('Expected array, got:', upcoming);
+                return;
+            }
+            
+            const notifications = [];
+            
+            // Формируем уведомления на основе предстоящих ТО
+            upcoming.forEach(item => {
+                if (item.status === 'overdue' || item.status === 'urgent') {
+                    notifications.push({
+                        type: 'danger',
+                        title: 'Срочное ТО',
+                        message: `${item.vehicle.brand} ${item.vehicle.model} (${item.vehicle.reg_number}) - требуется срочное техническое обслуживание`,
+                        date: item.prediction.predicted_date
+                    });
+                } else if (item.status === 'warning') {
+                    notifications.push({
+                        type: 'warning',
+                        title: 'Приближается ТО',
+                        message: `${item.vehicle.brand} ${item.vehicle.model} (${item.vehicle.reg_number}) - техническое обслуживание через ${item.prediction.days_remaining} дней`,
+                        date: item.prediction.predicted_date
+                    });
+                }
+            });
+            
+            if (notifications.length === 0) {
+                container.innerHTML = '<p style="color: #7F8C8D;">Нет активных уведомлений</p>';
+            } else {
+                container.innerHTML = notifications.map(notif => `
+                    <div class="alert alert-${notif.type === 'danger' ? 'danger' : 'warning'}" style="margin-bottom: 1rem;">
+                        <strong>${notif.title}</strong><br>
+                        ${notif.message}
+                    </div>
+                `).join('');
+            }
+        } catch (error) {
+            console.error('Error loading notifications:', error);
+            showErrorModal('Ошибка загрузки уведомлений: ' + (error.message || 'Неизвестная ошибка'));
+            document.getElementById('notifications-list').innerHTML = '<p style="color: #E74C3C;">Ошибка загрузки данных</p>';
+        }
+    }
+    
+    loadNotifications();
+</script>
+{% endblock %}
+
